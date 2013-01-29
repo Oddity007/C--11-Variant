@@ -6,11 +6,9 @@
 //  Copyright (c) 2013 Oliver Daids. All rights reserved.
 //
 
-#include <iostream>
+#include <cstdlib>
 #include <typeinfo>
 #include <typeindex>
-#include <algorithm>
-#include <functional>
 
 template<typename... Types>
 struct Variant
@@ -141,28 +139,4 @@ struct Variant
 		return *(T*)(this->data);
 	}
 };
-
-int main(int argc, const char * argv[])
-{
-	typedef Variant<const char*, int, float> V;
-	V value(float(100));
-	V value2 = value;
-	//value = V(int(0));
-	/*value.doIf<int>([](int v){std::cout << "Sup: " << v << "\n";});
-	value.doIf<float>([](float v){std::cout << "Sup: " << v << "\n";});
-	value.doIf<const char*>([](const char* v){std::cout << "Sup: " << v << "\n";});*/
-	if(value.isType<int>())
-	{
-		std::cout << value.cast<int>() << "\n";
-	}
-	else if(value.isType<float>())
-	{
-		std::cout << value.cast<float>() << "\n";
-	}
-	else if(value.isType<const char*>())
-	{
-		std::cout << value.cast<const char*>() << "\n";
-	}
-    return 0;
-}
 
