@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2013 Oliver Daids.
+Copyright (c) 2015 Oliver Daids.
 
 This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
 
@@ -15,134 +15,149 @@ Permission is granted to anyone to use this software for any purpose, including 
 #include <cstdlib>
 #include <typeinfo>
 #include <typeindex>
+#include <cassert>
 
 template<typename... Types>
 struct Variant
 {
+	
+
+	Variant(const Variant& other) : type_index(other.type_index)
+	{
+		selectCopy<Types...>(other);
+	}
+	
+	Variant& operator= (const Variant& other)
+	{
+		type_index = other.type_index;
+		selectCopy<Types...>(other);
+	}
+	
+	template<typename T>
+	explicit
+	Variant(const T& value) : type_index(typeid(T))
+	{
+		new(data) T(value);
+	}
+	
+	Variant(Variant&& other) : type_index(std::move(other.type_index))
+	{
+		selectMove<Types...>(other);
+	}
+	
+	Variant& operator= (Variant&& other)
+	{
+		type_index = std::move(other.type_index);
+		selectMove<Types...>(other);
+	}
+
+	~Variant(void)
+	{
+		selectDelete<Types...>();
+	}
+
+	template<typename T>
+	bool is(void) const
+	{
+		return type_index == typeid(T);
+	}
+	
+	template<typename T>
+	T& as(void) const
+	{
+		assert(is<T>());
+		return *(T*)(this->data);
+	}
+
 	private:
 	
-	static constexpr size_t Max(size_t A, size_t B)
+	Variant(void)
+	{
+		
+	}
+	
+	template <size_t N> struct NumberAsType{};
+	
+	template<typename T>
+	void selectDelete(NumberAsType<0> = NumberAsType<0>())
+	{
+		as<T>().~T();
+	}
+	
+	template<typename T, typename... Ts>
+	void selectDelete(NumberAsType<sizeof...(Ts)> = NumberAsType<sizeof...(Ts)>())
+	{
+		if (not is<T>())
+			return selectDelete<Ts...>(NumberAsType<sizeof...(Ts) - 1>());
+		as<T>().~T();
+	}
+	
+	template<typename T>
+	void selectCopy(const Variant& other, NumberAsType<0> = NumberAsType<0>())
+	{
+		new (data) T(other.as<T>());
+	}
+	
+	template<typename T, typename... Ts>
+	void selectCopy(const Variant& other, NumberAsType<sizeof...(Ts)> = NumberAsType<sizeof...(Ts)>())
+	{
+		if (not is<T>()) return selectCopy<Ts...>(other, NumberAsType<sizeof...(Ts) - 1>());
+		new (data) T(other.as<T>());
+	}
+	
+	template<typename T>
+	void selectMove(Variant&& other, NumberAsType<0> = NumberAsType<0>())
+	{
+		new (data) T(std::move(other.as<T>()));
+	}
+	
+	template<typename T, typename... Ts>
+	void selectMove(Variant&& other, NumberAsType<sizeof...(Ts)> = NumberAsType<sizeof...(Ts)>())
+	{
+		if (not is<T>()) return selectMove<Ts...>(other, NumberAsType<sizeof...(Ts) - 1>());
+		new (data) T(std::move(other.as<T>()));
+	}
+	
+	static constexpr size_t max(size_t A, size_t B)
 	{
 		return A > B ? A : B;
 	}
 
 	template<typename T>
-	static constexpr size_t TypeMaxSize()
+	static constexpr size_t CommonSize(NumberAsType<0> = NumberAsType<0>())
 	{
 		return sizeof(T);
 	}
 
-	template <typename T, typename T2, typename... Ts>
-	static constexpr size_t TypeMaxSize()
+	template <typename T, typename... Ts>
+	static constexpr size_t CommonSize(NumberAsType<sizeof...(Ts)> = NumberAsType<sizeof...(Ts)>())
 	{
-		return Max(Max(sizeof(T), sizeof(T2)), TypeMaxSize<Ts...>());
+		return max(sizeof(T), CommonSize<Ts...>(NumberAsType<sizeof...(Ts) - 1>()));
 	}
 
+	static constexpr size_t gcd(size_t m, size_t n)
+	{
+		return n == 0 ? m : gcd(n, m % n);
+	}
 	
-	char data[TypeMaxSize<Types...>()];
+	static constexpr size_t lcm(size_t m, size_t n)
+	{
+		return m * n == 0 ? 0 : m / gcd(m, n) * n;
+	}
+
+	template<typename T>
+	static constexpr size_t CommonAlignment(NumberAsType<0> = NumberAsType<0>())
+	{
+		return sizeof(T);
+	}
+
+	template <typename T, typename... Ts>
+	static constexpr size_t CommonAlignment(NumberAsType<sizeof...(Ts)> = NumberAsType<sizeof...(Ts)>())
+	{
+		return lcm(alignof(T), CommonAlignment<Ts...>(NumberAsType<sizeof...(Ts) - 1>()));
+	}
+	
+	alignas(CommonAlignment<Types...>()) char data[CommonSize<Types...>()];
 	std::type_index type_index;
-	
-	Variant(void) : type_index(typeid(void))
-	{
-		
-	}
-	
-	template<typename F>
-	bool forEachType(F f) const
-	{
-		return false;
-	}
-	
-	template<typename F, typename T, typename... TS>
-	bool forEachType(F f) const
-	{
-		return f(*((T*)this->data)) or forEachType<F, TS...>(f);
-	}
-	
-	public:
-	
-	Variant(const Variant<Types...>& other) : type_index(other.type_index)
-	{
-		this->type_index = other.type_index;
-		struct
-		{
-			const Variant<Types...>* self;
-			
-			template<typename T>
-			bool operator () (T& t)
-			{
-				if(this->self->type_index not_eq std::type_index(typeid(T))) return false;
-				(*(T*)(this->self->data)) = t;
-				return true;
-			}
-		}f;
-		f.self = this;
-		other.forEachType<decltype(f), Types...>(f);
-	}
-	
-	template<typename T>
-	explicit
-	Variant(T value) : type_index(typeid(T))
-	{
-		new(data) T(value);
-	}
-	
-	~Variant(void)
-	{
-		struct
-		{
-			std::type_index type_index = this->type_index;
-			
-			template<typename T>
-			bool operator () (T& t)
-			{
-				
-				if(this->type_index not_eq std::type_index(typeid(T))) return false;
-				t.~T();
-				return true;
-			}
-		}f;
-		forEachType<decltype(f), Types...>(f);
-	}
-	
-	void operator = (const Variant<Types...>& other)
-	{
-		this->type_index = other.type_index;
-		struct
-		{
-			const Variant<Types...>* self;
-			
-			template<typename T>
-			bool operator () (T& t)
-			{
-				if(this->self->type_index not_eq std::type_index(typeid(T))) return false;
-				(*(T*)(this->self->data)) = t;
-				return true;
-			}
-		}f;
-		f.self = this;
-		other.forEachType<decltype(f), Types...>(f);
-	}
-	
-	/*template<typename T, typename F>
-	bool doIf(const F& f)
-	{
-		bool doesMatch = (this->type_index == std::type_index(typeid(T)));
-		if(doesMatch) f(*(T*)(this->data));
-		return doesMatch;
-	}*/
-	
-	template<typename T>
-	bool isType(void)
-	{
-		return this->type_index == std::type_index(typeid(T));
-	}
-	
-	template<typename T>
-	T& cast(void)
-	{
-		if(not isType<T>()) throw;
-		return *(T*)(this->data);
-	}
 };
 

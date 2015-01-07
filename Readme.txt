@@ -17,17 +17,17 @@ int main(int argc, const char * argv[])
 	V value(float(100));
 	V value2 = value;
 	value = V(int(0));
-	if(value.isType<int>())
+	if(value.is<int>())
 	{
-		std::cout << value.cast<int>() << std::endl;
+		std::cout << value.as<int>() << std::endl;
 	}
-	else if(value.isType<float>())
+	else if(value.is<float>())
 	{
-		std::cout << value.cast<float>() << std::endl;
+		std::cout << value.as<float>() << std::endl;
 	}
-	else if(value.isType<const char*>())
+	else if(value.is<const char*>())
 	{
-		std::cout << value.cast<const char*>() << std::endl;
+		std::cout << value.as<const char*>() << std::endl;
 	}
 	return 0;
 }
